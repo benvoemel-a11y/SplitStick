@@ -1,0 +1,814 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="SplitStick">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f5f5f7" id="tc">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+:root{color-scheme:light}
+html,body{overscroll-behavior:none}
+body{margin:0; -webkit-tap-highlight-color:transparent; -webkit-touch-callout:none}
+[hidden]{display:none!important}
+@media (max-width:460px){ body{padding-block:calc(env(safe-area-inset-top, 0px) + 56px) calc(env(safe-area-inset-bottom, 0px) + 20px) !important} }
+</style>
+<script>
+// Statusleiste in der Farbe des gewählten Designs
+(function(){var m=document.getElementById('tc');function s(){var t=document.documentElement.getAttribute('data-theme');var d=t?t==='dark':matchMedia('(prefers-color-scheme: dark)').matches;m.content=d?'#000000':'#f5f5f7';}
+s();new MutationObserver(s).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});matchMedia('(prefers-color-scheme: dark)').addEventListener('change',s);})();
+</script>
+<title>SplitStick</title>
+<style>
+/* Layout: eine Spalte fürs Handy. Oben Strecke und Kilometer, in der Mitte das Pace-Rad;
+   beim Lauf zwei Seiten zum Wischen (Kilometer, Gesamt). Motiv wie bei TickStick: der Strich. */
+:root{
+  --bg:#f5f5f7; --fg:#1d1d1f; --fg2:#6e6e73; --surface:#ffffff; --tint:#e9e9ee;
+  --accent:#e30613; --on-accent:#ffffff; --on-fg:#ffffff;
+  --shadow:0 1px 2px rgba(0,0,0,.05), 0 10px 30px rgba(0,0,0,.07);
+  --round:ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --spring:cubic-bezier(.2,.9,.25,1.25);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#000000; --fg:#f5f5f7; --fg2:#98989d; --surface:#1c1c1e; --tint:#1a1a1c;
+    --accent:#f21d26; --on-fg:#1d1d1f;
+    --shadow:0 0 0 1px rgba(255,255,255,.06);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#000000; --fg:#f5f5f7; --fg2:#98989d; --surface:#1c1c1e; --tint:#1a1a1c;
+  --accent:#f21d26; --on-fg:#1d1d1f;
+  --shadow:0 0 0 1px rgba(255,255,255,.06);
+  color-scheme:dark;
+}
+
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:var(--round); font-size:15px; line-height:1.4;
+  -webkit-font-smoothing:antialiased;
+  display:grid; place-items:center;
+  padding-block:56px 28px; padding-inline:20px;
+  box-sizing:border-box;
+  -webkit-user-select:none; user-select:none;
+}
+.app{width:100%; max-width:420px; min-width:0}
+.view{display:flex; flex-direction:column; align-items:center; gap:18px; animation:rise .45s ease both}
+@keyframes rise{from{opacity:0; transform:translateY(8px)}}
+
+/* Alles Klickbare wächst beim Drüberfahren und beim Drücken */
+.grow{transition:transform .28s var(--spring)}
+@media (hover:hover){ .grow:hover{transform:scale(1.05)} }
+.grow:active{transform:scale(1.09)}
+:focus-visible{outline:3px solid var(--accent); outline-offset:3px}
+
+button{font-family:inherit; -webkit-tap-highlight-color:transparent}
+.icon{
+  position:fixed; right:16px; top:calc(env(safe-area-inset-top, 0px) + 12px);
+  width:40px; height:40px; border-radius:50%; border:0; padding:0; cursor:pointer;
+  display:grid; place-items:center; background:transparent; color:var(--fg2);
+}
+.icon svg{width:20px; height:20px}
+#theme{right:60px}
+#times{right:104px}
+.icon[aria-pressed="true"] .off,.icon[aria-pressed="false"] .on{display:none}
+
+/* Strecke */
+.dist{display:flex; align-items:center; gap:18px}
+.round{
+  width:42px; height:42px; border-radius:50%; border:0; padding:0; cursor:pointer;
+  background:var(--tint); color:var(--fg); font-size:24px; font-weight:500; line-height:1;
+  display:grid; place-items:center; touch-action:manipulation;
+}
+.distval{min-width:96px; text-align:center; font-variant-numeric:tabular-nums; white-space:nowrap}
+.distval .n{font-size:34px; font-weight:600; letter-spacing:-.02em}
+.distval .u{font-size:15px; font-weight:500; color:var(--fg2); margin-left:6px}
+
+/* Kilometer-Auswahl */
+.chips{
+  display:flex; gap:8px; width:100%; overflow-x:auto; padding:6px 4px; box-sizing:border-box;
+  scrollbar-width:none; -webkit-overflow-scrolling:touch;
+}
+.chips::-webkit-scrollbar{display:none}
+.chip{
+  flex:0 0 auto; min-width:54px; height:54px; padding:0 13px; border:0; border-radius:27px; cursor:pointer;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px;
+  background:var(--tint); color:var(--fg);
+  transition:transform .28s var(--spring), background-color .2s, color .2s;
+}
+.chip:first-child{margin-left:auto}
+.chip:last-child{margin-right:auto}
+.chip b{font-size:15px; font-weight:600; line-height:1.1}
+.chip i{font-style:normal; font-size:11px; line-height:1.1; color:var(--fg2); font-variant-numeric:tabular-nums}
+.chip[aria-selected="true"]{background:var(--fg); color:var(--on-fg)}
+.chip[aria-selected="true"] i{color:inherit; opacity:.7}
+
+/* Pace-Rad */
+.wheel{
+  position:relative; width:100%; max-width:300px; aspect-ratio:1; border-radius:50%;
+  cursor:grab; touch-action:none;
+}
+.wheel.dragging{cursor:grabbing}
+.wheel:focus-visible{outline:2px solid var(--fg2); outline-offset:6px}
+.disc{position:absolute; inset:15%; border-radius:50%; background:var(--surface); box-shadow:var(--shadow)}
+.wheel canvas{position:absolute; inset:0; width:100%; height:100%; display:block}
+.readout{
+  position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:5px; pointer-events:none; font-variant-numeric:tabular-nums;
+}
+.readout .lbl{font-size:12px; font-weight:500; color:var(--fg2); line-height:1}
+.readout .n{font-size:54px; font-weight:600; line-height:1; letter-spacing:-.02em}
+.readout .u{font-size:13px; font-weight:500; color:var(--fg2); line-height:1}
+.pawl{
+  position:absolute; left:calc(50% - 2.5px); top:-6px; width:5px; height:30px;
+  border-radius:3px; background:var(--accent); transform-origin:50% 3px; pointer-events:none;
+}
+.sum{margin:0; font-size:13px; color:var(--fg2); text-align:center; font-variant-numeric:tabular-nums}
+
+/* Knöpfe */
+.btn{
+  font:500 15px/1 var(--round); color:var(--fg); background:var(--surface);
+  border:0; border-radius:999px; padding:14px 22px; cursor:pointer;
+  box-shadow:var(--shadow); touch-action:manipulation; -webkit-touch-callout:none;
+}
+.btn.primary{background:var(--fg); color:var(--on-fg); font-size:17px; font-weight:600; padding:16px 52px; box-shadow:none}
+.btn.quiet{background:transparent; box-shadow:none; color:var(--fg2)}
+.btn.resume{background:var(--accent); color:var(--on-accent); font-weight:600; box-shadow:none; padding-inline:28px}
+.controls{display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:8px}
+
+/* Lauf: zwei Seiten zum Wischen */
+.pages{
+  display:flex; width:100%; overflow-x:auto; scroll-snap-type:x mandatory;
+  scrollbar-width:none; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain;
+}
+.pages::-webkit-scrollbar{display:none}
+.page{flex:0 0 100%; min-width:0; scroll-snap-align:center; display:grid; place-items:center; padding-block:6px}
+.ring{position:relative; width:100%; max-width:320px; aspect-ratio:1}
+.strokes{position:absolute; inset:0}
+.strokes b{position:absolute; left:50%; top:0; width:0; height:100%; pointer-events:none}
+.strokes i{
+  position:absolute; left:-1.5px; top:0; width:3px; height:12%;
+  border-radius:2px; background:var(--fg);
+  transition:transform .5s ease, opacity .5s ease, background-color .4s ease;
+}
+#run.paused .strokes{animation:breathe 2.6s ease-in-out infinite}
+#run.paused .strokes i{background:var(--accent)}
+@keyframes breathe{0%,100%{opacity:1} 50%{opacity:.3}}
+#run.done .strokes i{background:var(--accent); animation:wave 1s ease calc(var(--i) * 8ms) infinite}
+@keyframes wave{0%,100%{transform:scaleY(.2); opacity:.22} 40%{transform:scaleY(.65); opacity:1}}
+.core{
+  position:absolute; inset:17%; border-radius:50%;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+  font-variant-numeric:tabular-nums; text-align:center;
+}
+.cap{font-size:13px; font-weight:500; color:var(--fg2); line-height:1.1}
+.big{font-size:clamp(46px,15vw,60px); font-weight:600; line-height:1; letter-spacing:-.02em}
+.sub{font-size:14px; font-weight:500; color:var(--fg2); line-height:1.2}
+.sub b{font-weight:600; color:var(--fg)}
+#run.paused .cap, #run.done .cap{color:var(--accent); font-weight:600}
+/* Zeiten ausgeblendet: nur Striche und Kilometer, das Ergebnis am Ende bleibt sichtbar */
+#run.notimes:not(.done) .big{display:none}
+#run.notimes:not(.done) .cap{font-size:19px; font-weight:600; color:var(--fg)}
+#run.notimes.paused:not(.done) .cap{color:var(--accent)}
+.pages{cursor:pointer}
+.dots{display:flex; gap:8px; margin-top:-6px}
+.dot{width:8px; height:8px; padding:0; border:0; border-radius:50%; background:var(--fg2); opacity:.3; cursor:pointer; transition:opacity .2s, transform .2s}
+.dot.on{opacity:1; background:var(--fg); transform:scale(1.15)}
+.hint{margin:-6px 0 0; font-size:11px; color:var(--fg2); opacity:.8; text-align:center}
+
+@media (max-height:700px){ .wheel{max-width:260px} .ring{max-width:280px} .view{gap:14px} }
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation:none !important; transition:none !important}
+}
+</style>
+</head>
+<body>
+
+<button id="theme" class="icon grow" type="button" aria-label="Hell oder dunkel wechseln" title="Hell/Dunkel">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none"/></svg>
+</button>
+<button id="times" class="icon grow" type="button" aria-pressed="true" aria-label="Zeiten sichtbar" title="Zeiten zeigen/verbergen">
+  <svg class="on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8" fill="currentColor" stroke="none"/></svg>
+  <svg class="off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><path d="M4.5 4.5l15 15"/></svg>
+</button>
+<button id="sound" class="icon grow" type="button" aria-pressed="true" aria-label="Ton an" title="Ton an/aus">
+  <svg class="on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4z" fill="currentColor"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6"/><path d="M18 6.5a8 8 0 0 1 0 11"/></svg>
+  <svg class="off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4z" fill="currentColor"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></svg>
+</button>
+
+<main class="app">
+  <section id="setup" class="view">
+    <div class="dist">
+      <button id="less" class="round grow" type="button" aria-label="Ein Kilometer weniger">−</button>
+      <div class="distval" aria-live="polite"><span class="n" id="kmN">5</span><span class="u">km</span></div>
+      <button id="more" class="round grow" type="button" aria-label="Ein Kilometer mehr">+</button>
+    </div>
+    <div class="chips" id="chips" role="tablist" aria-label="Pace einstellen für"></div>
+    <div class="wheel" id="wheel" role="slider" tabindex="0" aria-label="Pace" aria-valuemin="5" aria-valuemax="600">
+      <div class="disc"></div>
+      <canvas id="cv"></canvas>
+      <div class="readout" aria-hidden="true">
+        <span class="lbl" id="forLbl">Alle Kilometer</span>
+        <span class="n" id="paceN">4:20</span>
+        <span class="u">min/km</span>
+      </div>
+      <span class="pawl" id="pawl"></span>
+    </div>
+    <p class="sum" id="sum"></p>
+    <button id="start" class="btn primary grow" type="button">Starten</button>
+  </section>
+
+  <section id="run" class="view" hidden>
+    <div class="pages" id="pages" tabindex="0" aria-label="Kilometer und Gesamt, seitlich wischen">
+      <div class="page">
+        <div class="ring">
+          <div class="strokes" id="ringKm" aria-hidden="true"></div>
+          <div class="core">
+            <span class="cap" id="kmCap"></span>
+            <span class="big" id="kmLeft"></span>
+            <span class="sub" id="kmSub"></span>
+          </div>
+        </div>
+      </div>
+      <div class="page">
+        <div class="ring">
+          <div class="strokes" id="ringAll" aria-hidden="true"></div>
+          <div class="core">
+            <span class="cap" id="allCap"></span>
+            <span class="big" id="allLeft"></span>
+            <span class="sub" id="allSub"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dots" id="dots">
+      <button class="dot on" type="button" aria-label="Seite Kilometer"></button>
+      <button class="dot" type="button" aria-label="Seite Gesamt"></button>
+    </div>
+    <div class="controls" id="live">
+      <button id="cancel" class="btn quiet grow" type="button">Beenden</button>
+      <button id="pause" class="btn grow" type="button">Pause</button>
+    </div>
+    <div class="controls" id="after" hidden>
+      <button id="again" class="btn grow" type="button">Nochmal</button>
+      <button id="fresh" class="btn primary grow" type="button">Neuer Lauf</button>
+    </div>
+    <p class="hint" id="runHint">Wischen: Kilometer oder Gesamt · Tippen: Zeiten ein oder aus</p>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const KEY = 'splitstick';
+  const SEC = 5;                    // eine Raste am Rad = 5 Sekunden
+  const MIN = 1, MAX = 120;         // 0:05 bis 10:00 pro Kilometer
+  const STEP = Math.PI / 30;        // 60 Rasten je Umdrehung = 5 Minuten
+  const PX_PER_STEP = 30, STROKES = 120, KM_MAX = 50;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+  const clampI = n => Math.max(MIN, Math.min(MAX, n));
+
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) {}
+  const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {} };
+
+  const fmt = sec => {
+    sec = Math.max(0, Math.round(sec));
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    const p = n => String(n).padStart(2, '0');
+    return h ? h + ':' + p(m) + ':' + p(s) : m + ':' + p(s);
+  };
+
+  /* ---------- Ton ---------- */
+  let ac = null, muted = !!saved.muted, lastTick = 0, noiseBuf = null;
+  const soundBtn = $('sound'), pawl = $('pawl');
+  function wake() {
+    if (muted) return;
+    try {
+      ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+      if (ac.state === 'suspended') ac.resume();
+    } catch (e) {}
+  }
+  addEventListener('pointerdown', wake, true);
+  addEventListener('keydown', wake, true);
+  const audible = () => !muted && ac && ac.state === 'running';
+
+  function voice(type, f0, f1, vol, dur, at) {
+    const t = ac.currentTime + (at || 0), o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(ac.destination);
+    o.start(t); o.stop(t + dur + 0.01);
+  }
+  function note(f, at, vol, dur) {
+    const t = ac.currentTime + at, o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(ac.destination);
+    o.start(t); o.stop(t + dur + 0.05);
+  }
+  function click(vol) {
+    if (!noiseBuf) {
+      noiseBuf = ac.createBuffer(1, Math.floor(ac.sampleRate * 0.03), ac.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+    }
+    const src = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+    src.buffer = noiseBuf; f.type = 'bandpass'; f.frequency.value = 3200; f.Q.value = 0.9; g.gain.value = vol;
+    src.connect(f); f.connect(g); g.connect(ac.destination);
+    src.start();
+  }
+
+  // iPhone im Browser: Safari kennt keine Vibration, aber ein unsichtbarer Schalter tickt beim Umlegen
+  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  function buzz(ms) {
+    try {
+      if (navigator.vibrate && navigator.userActivation && navigator.userActivation.hasBeenActive) navigator.vibrate(ms);
+    } catch (e) {}
+    if (!isIOS) return;
+    try {
+      const l = document.createElement('label'), i = document.createElement('input');
+      l.setAttribute('aria-hidden', 'true'); l.style.display = 'none';
+      i.type = 'checkbox'; i.setAttribute('switch', '');
+      l.appendChild(i); document.head.appendChild(l); l.click(); document.head.removeChild(l);
+    } catch (e) {}
+  }
+
+  // Rasten am Rad: leise, volle Minuten etwas kräftiger
+  const disc = document.querySelector('.disc'), paceN = $('paceN');
+  let kickA = null, popA = null;
+  function tick(major) {
+    const now = performance.now();
+    if (now - lastTick < 16) return;
+    lastTick = now;
+    buzz(major ? 12 : 6);
+    if (!reduce.matches && disc.animate) {
+      if (kickA) kickA.cancel();
+      if (popA) popA.cancel();
+      kickA = disc.animate([{ transform: 'scale(1)' }, { transform: 'scale(' + (major ? 0.955 : 0.975) + ')' }, { transform: 'scale(1)' }],
+        { duration: major ? 190 : 130, easing: 'ease-out' });
+      popA = paceN.animate([{ transform: 'scale(' + (major ? 1.1 : 1.05) + ')' }, { transform: 'scale(1)' }],
+        { duration: major ? 220 : 150, easing: 'ease-out' });
+    }
+    if (!audible()) return;
+    click(major ? 0.1 : 0.06);
+    voice('triangle', major ? 1250 : 1800, major ? 650 : 1000, major ? 0.022 : 0.012, 0.03);
+    voice('sine', major ? 185 : 155, 70, major ? 0.085 : 0.055, 0.065);
+  }
+  // Lauf-Signale
+  const cue = {
+    start() { if (audible()) { note(660, 0, 0.18, 0.25); note(990, 0.14, 0.2, 0.45); } buzz(30); },
+    count() { if (audible()) note(880, 0, 0.14, 0.12); buzz(10); },                 // die letzten drei Sekunden eines Kilometers
+    km()    { if (audible()) { note(784, 0, 0.22, 0.3); note(1175, 0.16, 0.24, 0.6); } buzz([40, 60, 40]); },
+    pause(p) { if (audible()) voice('sine', p ? 520 : 390, p ? 390 : 520, 0.12, 0.18); buzz(15); },
+    end() {
+      if (audible()) [0, 1.7].forEach(off => [659.25, 880, 1318.5].forEach((f, i) => note(f, 0.05 + off + i * 0.17, 0.16, 1.1)));
+      buzz([70, 90, 70, 90, 70]);
+    }
+  };
+  function paintSound() {
+    soundBtn.setAttribute('aria-pressed', String(!muted));
+    soundBtn.setAttribute('aria-label', muted ? 'Ton aus' : 'Ton an');
+  }
+  soundBtn.addEventListener('click', () => {
+    muted = !muted; saved.muted = muted; persist(); paintSound();
+    if (!muted) { wake(); setTimeout(() => tick(true), 60); }
+  });
+  paintSound();
+
+  /* ---------- Hell / Dunkel ---------- */
+  function applyTheme() {
+    if (saved.theme === 'light' || saved.theme === 'dark') document.documentElement.setAttribute('data-theme', saved.theme);
+  }
+  $('theme').addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme') ||
+      (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    saved.theme = cur === 'dark' ? 'light' : 'dark';
+    persist(); applyTheme();
+  });
+  applyTheme();
+
+  // Auf dem Handy bleibt der Bildschirm an, solange gelaufen wird
+  let wakeLock = null;
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  async function keepAwake(on) {
+    try {
+      if (on && coarse && navigator.wakeLock && !wakeLock && !document.hidden) {
+        const w = await navigator.wakeLock.request('screen');
+        wakeLock = w;
+        w.addEventListener('release', () => { if (wakeLock === w) wakeLock = null; });
+      } else if (!on && wakeLock) {
+        const w = wakeLock; wakeLock = null;
+        await w.release();
+      }
+    } catch (e) { wakeLock = null; }
+  }
+
+  /* ---------- Plan: Strecke und Pace je Kilometer (in Rasten zu 5 s) ---------- */
+  let N = Math.max(1, Math.min(KM_MAX, Math.round(Number(saved.n)) || 5));
+  let paces = Array.isArray(saved.paces) ? saved.paces.map(x => clampI(Math.round(Number(x)) || 52)) : [];
+  while (paces.length < N) paces.push(paces.length ? paces[paces.length - 1] : 52);   // 52 Rasten = 4:20
+  paces.length = N;
+  let sel = -1;                                                                        // -1 = alle Kilometer
+
+  const isMixed = () => paces.some(p => p !== paces[0]);
+  const totalSec = () => paces.reduce((a, b) => a + b, 0) * SEC;
+  const avgSec = () => totalSec() / N;
+  const savePlan = () => { saved.n = N; saved.paces = paces.slice(); persist(); };
+
+  const chipsEl = $('chips'), kmN = $('kmN'), forLbl = $('forLbl'), sumEl = $('sum');
+  let chipEls = [];
+  function buildChips() {
+    chipsEl.textContent = ''; chipEls = [];
+    for (let i = -1; i < N; i++) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'chip grow'; b.setAttribute('role', 'tab');
+      b.appendChild(document.createElement('b')); b.appendChild(document.createElement('i'));
+      b.addEventListener('click', () => select(i));
+      chipsEl.appendChild(b); chipEls.push(b);
+    }
+    paintChips();
+  }
+  function paintChips() {
+    const mixed = isMixed();
+    chipEls.forEach((b, idx) => {
+      const i = idx - 1;
+      b.firstChild.textContent = i < 0 ? 'Alle' : String(i + 1);
+      b.lastChild.textContent = i < 0 ? (mixed ? 'Ø ' + fmt(avgSec()) : fmt(paces[0] * SEC)) : fmt(paces[i] * SEC);
+      b.setAttribute('aria-selected', String(i === sel));
+      b.setAttribute('aria-label', i < 0 ? 'Alle Kilometer' : 'Kilometer ' + (i + 1) + ', Pace ' + fmt(paces[i] * SEC));
+    });
+  }
+  function paintSum() {
+    kmN.textContent = N;
+    sumEl.textContent = N + ' km · Gesamt ' + fmt(totalSec()) + (isMixed() ? ' · Ø ' + fmt(avgSec()) : '');
+  }
+  function paintReadout() {
+    paceN.textContent = fmt(lastStep * SEC);
+    forLbl.textContent = sel >= 0 ? 'Kilometer ' + (sel + 1) : (isMixed() ? 'Ø aller Kilometer' : 'Alle Kilometer');
+    wheel.setAttribute('aria-valuenow', lastStep * SEC);
+    wheel.setAttribute('aria-valuetext', Math.floor(lastStep * SEC / 60) + ' Minuten ' + (lastStep * SEC % 60) + ' Sekunden pro Kilometer');
+  }
+  const wheelTarget = () => sel >= 0 ? paces[sel] : clampI(Math.round(paces.reduce((a, b) => a + b, 0) / N));
+  function select(i) {
+    sel = i;
+    setWheel(wheelTarget());
+    paintChips();
+    const el = chipEls[i + 1];
+    if (el && el.scrollIntoView) el.scrollIntoView({ inline: 'center', block: 'nearest', behavior: reduce.matches ? 'auto' : 'smooth' });
+    tick(false);
+  }
+  function setKm(n) {
+    n = Math.max(1, Math.min(KM_MAX, n));
+    if (n === N) return;
+    while (paces.length < n) paces.push(paces[paces.length - 1]);
+    paces.length = n; N = n;
+    if (sel >= N) sel = -1;
+    buildChips(); paintSum(); setWheel(wheelTarget()); savePlan(); tick(false);
+  }
+  $('less').addEventListener('click', () => setKm(N - 1));
+  $('more').addEventListener('click', () => setKm(N + 1));
+
+  /* ---------- Pace-Rad mit Widerstand ---------- */
+  const wheel = $('wheel'), cv = $('cv'), ctx = cv.getContext('2d');
+  let v = wheelTarget(), lastStep = v, vel = 0, goal = null, raf = 0, S = 0, dpr = 1;
+
+  function detent(raw) {
+    const n = Math.round(raw), d = raw - n;
+    return n + Math.sign(d) * 0.5 * Math.pow(Math.abs(d) * 2, 3.2);
+  }
+  function draw() {
+    const shown = detent(v), n = Math.round(v);
+    pawl.style.transform = 'rotate(' + (-(shown - n) * 2 * 26).toFixed(2) + 'deg)';
+    if (!S) return;
+    const fg = getComputedStyle(document.documentElement).getPropertyValue('--fg').trim();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, S, S);
+    const c = S / 2, ro = S / 2 - 6, phi = shown * STEP;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = fg;
+    for (let j = 0; j < 60; j++) {
+      const a = phi + j * STEP, major = j % 12 === 0;                 // lange Striche = volle Minuten
+      const turn = ((a / (2 * Math.PI)) % 1 + 1) % 1;
+      const near = Math.max(0, 1 - Math.min(turn, 1 - turn) * 60);
+      const len = (major ? 22 : 11) + near * 4;
+      const sx = Math.sin(a), sy = -Math.cos(a);
+      ctx.globalAlpha = Math.min(1, (major ? 0.9 : 0.34) + near * 0.5);
+      ctx.lineWidth = major ? 3 : 2.1;
+      ctx.beginPath();
+      ctx.moveTo(c + sx * (ro - len), c + sy * (ro - len));
+      ctx.lineTo(c + sx * ro, c + sy * ro);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+  function applyStep(s) {
+    if (sel >= 0) paces[sel] = s; else paces.fill(s);
+    paintChips(); paintReadout(); paintSum();
+  }
+  function setV(n) {
+    v = Math.max(MIN - 0.35, Math.min(MAX + 0.35, n));
+    const s = clampI(Math.round(v));
+    if (s !== lastStep) { lastStep = s; applyStep(s); tick(s % 12 === 0); }
+    draw();
+  }
+  // Rad ohne Ticken auf einen Wert stellen (beim Wechsel der Kilometer-Auswahl)
+  function setWheel(val) {
+    cancelAnimationFrame(raf); raf = 0; goal = null; vel = 0;
+    v = lastStep = clampI(val);
+    draw(); paintReadout();
+  }
+  function settle() {
+    cancelAnimationFrame(raf);
+    if (reduce.matches) { finishSettle(); return; }
+    let last = performance.now();
+    const loop = t => {
+      const dt = Math.min(32, t - last) / 1000; last = t;
+      if (goal === null && Math.abs(vel) > 1.2) {
+        setV(v + vel * dt);
+        vel *= Math.pow(0.002, dt);
+        if (v <= MIN - 0.3 || v >= MAX + 0.3) vel = 0;
+      } else {
+        const target = goal !== null ? goal : clampI(Math.round(v)), d = target - v;
+        if (Math.abs(d) < 0.003) { finishSettle(); return; }
+        setV(v + d * Math.min(1, dt * 16));
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+  }
+  function finishSettle() {
+    const target = goal !== null ? goal : clampI(Math.round(v));
+    goal = null; vel = 0; raf = 0;
+    setV(target);
+    savePlan();
+  }
+
+  let dragging = false, lastA = null, lastT = 0;
+  function pointerAngle(e) {
+    const r = wheel.getBoundingClientRect();
+    const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+    return Math.hypot(dx, dy) < 14 ? null : Math.atan2(dy, dx);
+  }
+  wheel.addEventListener('pointerdown', e => {
+    if (e.button) return;
+    dragging = true; goal = null; vel = 0;
+    cancelAnimationFrame(raf);
+    lastA = pointerAngle(e); lastT = performance.now();
+    wheel.classList.add('dragging');
+    try { wheel.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  wheel.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const a = pointerAngle(e);
+    if (a === null) { lastA = null; return; }
+    if (lastA === null) { lastA = a; return; }
+    let da = a - lastA;
+    if (da > Math.PI) da -= 2 * Math.PI; else if (da < -Math.PI) da += 2 * Math.PI;
+    const now = performance.now(), dv = da / STEP, dt = Math.max(1, now - lastT) / 1000;
+    vel = vel * 0.7 + (dv / dt) * 0.3;
+    lastA = a; lastT = now;
+    setV(v + dv);
+  });
+  const endDrag = () => {
+    if (!dragging) return;
+    dragging = false;
+    wheel.classList.remove('dragging');
+    if (performance.now() - lastT > 90) vel = 0;
+    settle();
+  };
+  wheel.addEventListener('pointerup', endDrag);
+  wheel.addEventListener('pointercancel', endDrag);
+  wheel.addEventListener('lostpointercapture', endDrag);
+
+  let wheelTimer = 0, gestureFrom = 0, gestureSum = 0;
+  wheel.addEventListener('wheel', e => {
+    e.preventDefault();
+    if (dragging) return;
+    const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    if (!d) return;
+    if (!wheelTimer) { gestureFrom = goal !== null ? goal : clampI(Math.round(v)); gestureSum = 0; }
+    cancelAnimationFrame(raf); goal = null; vel = 0;
+    const dv = e.deltaMode !== 0 ? Math.sign(d) : Math.max(-3, Math.min(3, d / PX_PER_STEP));
+    gestureSum += dv;
+    setV(v + dv);
+    clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(() => {
+      wheelTimer = 0;
+      if (clampI(Math.round(v)) === gestureFrom && Math.abs(gestureSum) > 0.05) goal = clampI(gestureFrom + Math.sign(gestureSum));
+      settle();
+    }, 130);
+  }, { passive: false });
+
+  wheel.addEventListener('keydown', e => {
+    const cur = goal !== null ? goal : clampI(Math.round(v)), big = e.shiftKey ? 12 : 1;
+    let t;
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowUp': t = cur + big; break;
+      case 'ArrowLeft': case 'ArrowDown': t = cur - big; break;
+      case 'PageUp': t = cur + 12; break;
+      case 'PageDown': t = cur - 12; break;
+      case 'Home': t = MIN; break;
+      case 'End': t = MAX; break;
+      case 'Enter': start(); return;
+      default: return;
+    }
+    e.preventDefault();
+    goal = clampI(t);
+    settle();
+  });
+
+  function resize() {
+    S = Math.round(wheel.clientWidth);
+    if (!S) return;
+    dpr = Math.min(3, window.devicePixelRatio || 1);
+    cv.width = cv.height = Math.round(S * dpr);
+    draw();
+  }
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(wheel);
+  addEventListener('resize', resize);
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+  new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  /* ---------- Lauf ---------- */
+  const setup = $('setup'), run = $('run'), pages = $('pages'), dots = Array.from($('dots').children);
+  const kmCap = $('kmCap'), kmLeft = $('kmLeft'), kmSub = $('kmSub');
+  const allCap = $('allCap'), allLeft = $('allLeft'), allSub = $('allSub');
+  const live = $('live'), after = $('after'), pauseBtn = $('pause'), runHint = $('runHint');
+
+  function makeRing(el) {
+    const bars = [];
+    for (let i = 0; i < STROKES; i++) {
+      const spoke = document.createElement('b'), bar = document.createElement('i');
+      spoke.style.transform = 'rotate(' + (i * 360 / STROKES) + 'deg)';
+      bar.style.setProperty('--i', i);
+      spoke.appendChild(bar); el.appendChild(spoke); bars.push(bar);
+    }
+    return { bars, cache: new Array(STROKES).fill(-1) };
+  }
+  function paintRing(r, p) {
+    const pos = Math.min(STROKES, Math.max(0, p) * STROKES), k = Math.floor(pos), f = pos - k;
+    for (let i = 0; i < STROKES; i++) {
+      const s = Math.round((i < k ? 0 : i > k ? 1 : 1 - f) * 100) / 100;
+      if (r.cache[i] === s) continue;
+      r.cache[i] = s;
+      r.bars[i].style.transform = 'scaleY(' + (0.2 + 0.8 * s).toFixed(3) + ')';
+      r.bars[i].style.opacity = (0.22 + 0.78 * s).toFixed(3);
+    }
+  }
+  const ringKm = makeRing($('ringKm')), ringAll = makeRing($('ringAll'));
+
+  // Der Lauf ist nur eine Zeitachse: aus der vergangenen Zeit ergeben sich Kilometer und Restzeiten
+  const R = { active: false, paused: false, t0: 0, pausedAt: 0, cum: [0], total: 0, km: -1, sec: -1 };
+  let iv = 0;
+  const elapsed = () => (R.paused ? R.pausedAt : Date.now()) - R.t0;
+  function plan() {
+    R.cum = [0];
+    paces.forEach(p => R.cum.push(R.cum[R.cum.length - 1] + p * SEC * 1000));
+    R.total = R.cum[R.cum.length - 1];
+  }
+  function saveRun() {
+    saved.run = R.active ? { t0: R.t0, pausedAt: R.pausedAt, paused: R.paused } : null;
+    persist();
+    keepAwake(R.active && !R.paused);
+  }
+  function show(view) {
+    setup.hidden = view !== setup;
+    run.hidden = view !== run;
+    if (view === setup) requestAnimationFrame(resize);
+  }
+  function update() {
+    if (!R.active) return;
+    const e = elapsed();
+    if (e >= R.total) { finish(); return; }
+    let k = 0;
+    while (k < N - 1 && e >= R.cum[k + 1]) k++;
+    const kmRem = R.cum[k + 1] - e, kmLen = R.cum[k + 1] - R.cum[k];
+    paintRing(ringKm, 1 - kmRem / kmLen);
+    paintRing(ringAll, e / R.total);
+    kmLeft.textContent = fmt(Math.ceil(kmRem / 1000));
+    allLeft.textContent = fmt(Math.ceil((R.total - e) / 1000));
+    if (k !== R.km) {
+      if (R.km >= 0 && !R.paused) cue.km();
+      R.km = k; R.sec = -1;
+      paintCaptions();
+    }
+    const s = Math.ceil(kmRem / 1000);
+    if (s !== R.sec) {
+      if (s <= 3 && R.sec !== -1 && !R.paused) cue.count();
+      R.sec = s;
+    }
+  }
+  function paintCaptions() {
+    const k = Math.max(0, R.km), where = 'Kilometer ' + (k + 1) + ' von ' + N;
+    kmCap.textContent = R.paused ? 'Pausiert · ' + where : where;
+    const next = k + 1 < N && paces[k + 1] !== paces[k] ? ' · danach ' + fmt(paces[k + 1] * SEC) : '';
+    kmSub.innerHTML = 'Pace <b>' + fmt(paces[k] * SEC) + '</b>' + next;
+    allCap.textContent = R.paused ? 'Pausiert · Gesamt' : 'Gesamt';
+    allSub.textContent = where;
+    pauseBtn.textContent = R.paused ? 'Weiter' : 'Pause';
+    pauseBtn.classList.toggle('resume', R.paused);
+    run.classList.toggle('paused', R.paused);
+  }
+  function enterRun() {
+    run.classList.remove('done');
+    live.hidden = false; after.hidden = true; runHint.hidden = false;
+    R.km = -1; R.sec = -1;
+    show(run);
+    goPage(0, true);
+    update(); paintCaptions();
+    clearInterval(iv);
+    iv = setInterval(update, 100);
+  }
+  function start() {
+    if (goal !== null || raf) finishSettle();
+    savePlan(); plan();
+    R.active = true; R.paused = false; R.t0 = Date.now(); R.pausedAt = 0;
+    saveRun();
+    enterRun();
+    cue.start();
+  }
+  function finish() {
+    R.active = false; R.paused = false; clearInterval(iv);
+    paintRing(ringKm, 1); paintRing(ringAll, 1);
+    run.classList.remove('paused'); run.classList.add('done');
+    kmCap.textContent = 'Fertig'; allCap.textContent = 'Fertig';
+    kmLeft.textContent = fmt(R.total / 1000); allLeft.textContent = fmt(R.total / 1000);
+    kmSub.textContent = N + ' km geschafft';
+    allSub.innerHTML = 'Ø Pace <b>' + fmt(R.total / 1000 / N) + '</b>';
+    live.hidden = true; after.hidden = false; runHint.hidden = true;
+    saveRun();
+    cue.end();
+  }
+  function reset() {
+    R.active = false; R.paused = false; clearInterval(iv);
+    saveRun();
+    show(setup);
+  }
+  $('start').addEventListener('click', start);
+  $('cancel').addEventListener('click', () => { buzz(15); reset(); });
+  $('fresh').addEventListener('click', reset);
+  $('again').addEventListener('click', start);
+  pauseBtn.addEventListener('click', () => {
+    if (!R.active) return;
+    if (R.paused) { R.t0 += Date.now() - R.pausedAt; R.paused = false; }
+    else { R.pausedAt = Date.now(); R.paused = true; }
+    cue.pause(R.paused);
+    saveRun(); paintCaptions(); update();
+  });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { update(); keepAwake(R.active && !R.paused); } });
+
+  // Zeiten immer sehen oder nicht: Auge oben rechts oder Tipp auf den Ring
+  const timesBtn = $('times');
+  let showTimes = saved.times !== false;
+  function paintTimes() {
+    run.classList.toggle('notimes', !showTimes);
+    timesBtn.setAttribute('aria-pressed', String(showTimes));
+    timesBtn.setAttribute('aria-label', showTimes ? 'Zeiten sichtbar' : 'Zeiten verborgen');
+  }
+  function toggleTimes() { showTimes = !showTimes; saved.times = showTimes; persist(); paintTimes(); buzz(8); }
+  timesBtn.addEventListener('click', toggleTimes);
+  pages.addEventListener('click', () => { if (R.active) toggleTimes(); });
+  paintTimes();
+
+  // Zwei Seiten: Kilometer und Gesamt
+  function goPage(i, instant) {
+    pages.scrollTo({ left: i * pages.clientWidth, behavior: instant || reduce.matches ? 'auto' : 'smooth' });
+    if (instant) dots.forEach((d, j) => d.classList.toggle('on', j === i));
+  }
+  pages.addEventListener('scroll', () => {
+    const i = Math.round(pages.scrollLeft / Math.max(1, pages.clientWidth));
+    dots.forEach((d, j) => d.classList.toggle('on', j === i));
+  }, { passive: true });
+  dots.forEach((d, i) => d.addEventListener('click', () => goPage(i)));
+  pages.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight') { e.preventDefault(); goPage(1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); goPage(0); }
+  });
+
+  /* ---------- Start ---------- */
+  buildChips(); paintSum(); paintReadout(); resize();
+  const st = saved.run;
+  if (st && st.t0 > 0) {
+    plan();
+    R.t0 = st.t0; R.pausedAt = st.pausedAt || 0; R.paused = !!st.paused; R.active = true;
+    if (elapsed() < R.total) enterRun();
+    else { R.active = false; saveRun(); }
+  }
+})();
+</script>
+
+</body>
+</html>
